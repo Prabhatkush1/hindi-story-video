@@ -1,0 +1,74 @@
+name: Hindi Story Video Generator
+on:
+  workflow_dispatch:
+jobs:
+  build-video:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: \'3.10\'
+      - name: FFmpeg Install Karo
+        run: sudo apt-get update && sudo apt-get install -y ffmpeg imagemagick
+      - name: Policy Fix Karo
+        run: sudo sed -i \'s/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/\' /etc/ImageMagick-6/policy.xml || true
+      - name: Libraries Install Karo
+        run: pip install gTTS moviepy==1.0.3 Pillow requests
+      - name: Video Generate Karo
+        run: |
+          cat > generate.py << \'PYEOF\'
+          from gtts import gTTS
+          from moviepy.editor import *
+          from PIL import Image, ImageDraw, ImageFont
+          import requests, textwrap, os
+
+          scenes = [
+              {"text": "Savita apne pati ke guzar jaane ke baad bahut gareebi me jee rahi thi. Uske paas itne paise nahi the ki wo dono beto ko padha sake.", "prompt": "poor indian old mother with two young sons in small village hut sad atmosphere"},
+              {"text": "Gaon ke master ji ne salah di ki Manav padhne me tez hai, use sheher bhej do. Aur Atul ko yahi mithai ki dukaan par kaam par laga do.", "prompt": "indian village teacher advising poor mother with two sons"},
+              {"text": "Manav sheher chala gaya, aur chota Atul gaon ki mithai ki dukaan par kaam karne laga. Uske haathon me jaadu aa gaya.", "prompt": "indian boy making jalebi and samosa in sweet shop"},
+              {"text": "Saalon baad, Manav ek bade Food Chain Company ka Senior Manager ban gaya. Usne apni maa aur bhai ko sheher bula liya.", "prompt": "indian young man in manager suit in modern office city"},
+              {"text": "Lekin kamyabi ke saath Manav me ghamand bhi aa gaya. Use apna gareeb halwai bhai sharmindagi lagne laga.", "prompt": "rich indian manager ashamed of his poor brother in kitchen clothes"},
+              {"text": "Boss ghar dinner par aaye. Atul ne itna swadisht khana banaya ki Boss bahut khush ho gaye.", "prompt": "indian boss eating delicious food at dinner table impressed"},
+              {"text": "Boss ne kaha, Atul tumhare haathon me jaadu hai. Kya tum mere Five Star Hotel me Head Chef banoge?", "prompt": "indian boss offering chef job to young cook happy moment"},
+              {"text": "Manav jal gaya aur usne chupke se Atul ki sabzi me muthi bhar namak daal diya.", "prompt": "jealous man secretly adding salt to food in hotel kitchen cctv camera"},
+              {"text": "Boss ne CCTV me sach dekh liya aur Manav ko bahut daanta. Degree sirf Naukri deti hai, par Hunar Pehchan deta hai.", "prompt": "angry boss scolding manager showing cctv footage"},
+              {"text": "Manav ko apni galti ka ehsaas hua. Usne Atul se maafi maangi. Ab dono bhai khushi khushi rehne lage.", "prompt": "two indian brothers hugging and apologizing mother blessing happy ending"}
+          ]
+          clips = []
+          for i, scene in enumerate(scenes):
+              print(f"Scene {i+1} bana raha hu...")
+              url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(scene[\'prompt\'])}?width=1280&height=720&nologo=true&seed={i+10}"
+              r = requests.get(url, timeout=60)
+              open(f"img{i}.jpg","wb").write(r.content)
+              
+              # Image par text likhna
+              img = Image.open(f"img{i}.jpg").convert("RGB")
+              draw = ImageDraw.Draw(img)
+              try:
+                  font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+              except:
+                  font = ImageFont.load_default()
+              text = textwrap.fill(scene[\'text\'], width=45)
+              draw.rectangle([(0, 550), (1280, 720)], fill=(0,0,0))
+              draw.multiline_text((40, 570), text, font=font, fill=(255,255,255), spacing=4)
+              img.save(f"final_img{i}.jpg")
+
+              tts = gTTS(text=scene[\'text\'], lang=\'hi\', slow=False)
+              tts.save(f"audio{i}.mp3")
+              
+              audio = AudioFileClip(f"audio{i}.mp3")
+              image = ImageClip(f"final_img{i}.jpg").set_duration(audio.duration)
+              image = image.set_audio(audio)
+              clips.append(image)
+
+          final = concatenate_videoclips(clips, method="compose")
+          final.write_videofile("final_video.mp4", fps=24, codec="libx264", audio_codec="aac")
+          print("Video ban gaya!")
+          PYEOF
+          python generate.py
+      - name: Video Save Karo
+        uses: actions/upload-artifact@v4
+        with:
+          name: hindi-story-video
+          path: final_video.mp4
