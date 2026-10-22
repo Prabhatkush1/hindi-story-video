@@ -12,14 +12,14 @@ jobs:
         with:
           python-version: 3.11
 
-      - name: FFmpeg Install
-        run: sudo apt-get update && sudo apt-get install -y ffmpeg imagemagick
-
-      - name: Policy Fix
-        run: sudo sed -i \'s/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/\' /etc/ImageMagick-6/policy.xml || true
+      - name: Install Tools
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ffmpeg imagemagick
+          sudo sed -i \'s/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/\' /etc/ImageMagick-6/policy.xml || true
 
       - name: Libraries Install
-        run: pip install gTTS moviepy==1.0.3 Pillow requests
+        run: pip install --upgrade gTTS moviepy==1.0.3 Pillow requests imageio-ffmpeg
 
       - name: Video Generate
         run: |
@@ -27,7 +27,8 @@ jobs:
           from gtts import gTTS
           from moviepy.editor import *
           from PIL import Image, ImageDraw, ImageFont
-          import requests, textwrap
+          import requests, textwrap, os
+
           scenes = [
               {"text": "Savita apne pati ke guzar jaane ke baad bahut gareebi me jee rahi thi. Uske paas itne paise nahi the ki wo dono beto ko padha sake.", "prompt": "poor indian old mother with two young sons in small village hut sad atmosphere"},
               {"text": "Gaon ke master ji ne salah di ki Manav padhne me tez hai, use sheher bhej do. Aur Atul ko yahi mithai ki dukaan par kaam par laga do.", "prompt": "indian village teacher advising poor mother with two sons"},
@@ -42,34 +43,51 @@ jobs:
           ]
           clips = []
           for i, scene in enumerate(scenes):
-              print(f"Scene {i+1} bana raha hu...")
-              url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(scene[\'prompt\'])}?width=1280&height=720&nologo=true&seed={i+10}"
-              r = requests.get(url, timeout=60)
-              open(f"img{i}.jpg","wb").write(r.content)
-              img = Image.open(f"img{i}.jpg").convert("RGB")
+              print(f"Scene {i+1} bana raha hu...", flush=True)
+              try:
+                  url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(scene[\'prompt\'])}?width=1280&height=720&nologo=true&seed={i+10}"
+                  r = requests.get(url, timeout=90)
+                  open(f"img{i}.jpg","wb").write(r.content)
+                  img = Image.open(f"img{i}.jpg").convert("RGB")
+              except Exception as e:
+                  print(f"Image fail {e}, blank bana raha hu")
+                  img = Image.new(\'RGB\', (1280, 720), color=(40,40,40))
+              
               draw = ImageDraw.Draw(img)
               try:
-                  font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 32)
+                  font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
               except:
                   font = ImageFont.load_default()
-              text = textwrap.fill(scene[\'text\'], width=45)
-              draw.rectangle([(0, 550), (1280, 720)], fill=(0,0,0))
-              draw.multiline_text((40, 570), text, font=font, fill=(255,255,255), spacing=4)
+              text = textwrap.fill(scene[\'text\'], width=42)
+              draw.rectangle([(0, 560), (1280, 720)], fill=(0,0,0))
+              draw.multiline_text((40, 580), text, font=font, fill=(255,255,255), spacing=4)
               img.save(f"final_img{i}.jpg")
-              tts = gTTS(text=scene[\'text\'], lang=\'hi\', slow=False)
-              tts.save(f"audio{i}.mp3")
+
+              try:
+                  tts = gTTS(text=scene[\'text\'], lang=\'hi\', slow=False)
+                  tts.save(f"audio{i}.mp3")
+              except Exception as e:
+                  print(f"TTS fail {e}")
+                  raise
+              
               audio = AudioFileClip(f"audio{i}.mp3")
               image = ImageClip(f"final_img{i}.jpg").set_duration(audio.duration)
               image = image.set_audio(audio)
               clips.append(image)
+
+          print("Sab clips bane, ab video jod raha hu...")
           final = concatenate_videoclips(clips, method="compose")
           final.write_videofile("final_video.mp4", fps=24, codec="libx264", audio_codec="aac")
-          print("Video ban gaya!")
+          print("VIDEO BAN GAYA!")
           PYEOF
           python generate.py
+
+      - name: Check File
+        run: ls -lh *.mp4 *.jpg *.mp3 || true
 
       - name: Video Save
         uses: actions/upload-artifact@v4
         with:
           name: hindi-story-video
           path: final_video.mp4
+          if-no-files-found: error
