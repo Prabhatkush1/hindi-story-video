@@ -6,23 +6,28 @@ jobs:
     runs-on: ubuntu-latest
     steps:
       - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
+      
+      - name: Python Setup
+        uses: actions/setup-python@v5
         with:
-          python-version: \'3.10\'
-      - name: FFmpeg Install Karo
+          python-version: 3.11
+
+      - name: FFmpeg Install
         run: sudo apt-get update && sudo apt-get install -y ffmpeg imagemagick
-      - name: Policy Fix Karo
+
+      - name: Policy Fix
         run: sudo sed -i \'s/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/\' /etc/ImageMagick-6/policy.xml || true
-      - name: Libraries Install Karo
+
+      - name: Libraries Install
         run: pip install gTTS moviepy==1.0.3 Pillow requests
-      - name: Video Generate Karo
+
+      - name: Video Generate
         run: |
           cat > generate.py << \'PYEOF\'
           from gtts import gTTS
           from moviepy.editor import *
           from PIL import Image, ImageDraw, ImageFont
-          import requests, textwrap, os
-
+          import requests, textwrap
           scenes = [
               {"text": "Savita apne pati ke guzar jaane ke baad bahut gareebi me jee rahi thi. Uske paas itne paise nahi the ki wo dono beto ko padha sake.", "prompt": "poor indian old mother with two young sons in small village hut sad atmosphere"},
               {"text": "Gaon ke master ji ne salah di ki Manav padhne me tez hai, use sheher bhej do. Aur Atul ko yahi mithai ki dukaan par kaam par laga do.", "prompt": "indian village teacher advising poor mother with two sons"},
@@ -41,8 +46,6 @@ jobs:
               url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(scene[\'prompt\'])}?width=1280&height=720&nologo=true&seed={i+10}"
               r = requests.get(url, timeout=60)
               open(f"img{i}.jpg","wb").write(r.content)
-              
-              # Image par text likhna
               img = Image.open(f"img{i}.jpg").convert("RGB")
               draw = ImageDraw.Draw(img)
               try:
@@ -53,21 +56,19 @@ jobs:
               draw.rectangle([(0, 550), (1280, 720)], fill=(0,0,0))
               draw.multiline_text((40, 570), text, font=font, fill=(255,255,255), spacing=4)
               img.save(f"final_img{i}.jpg")
-
               tts = gTTS(text=scene[\'text\'], lang=\'hi\', slow=False)
               tts.save(f"audio{i}.mp3")
-              
               audio = AudioFileClip(f"audio{i}.mp3")
               image = ImageClip(f"final_img{i}.jpg").set_duration(audio.duration)
               image = image.set_audio(audio)
               clips.append(image)
-
           final = concatenate_videoclips(clips, method="compose")
           final.write_videofile("final_video.mp4", fps=24, codec="libx264", audio_codec="aac")
           print("Video ban gaya!")
           PYEOF
           python generate.py
-      - name: Video Save Karo
+
+      - name: Video Save
         uses: actions/upload-artifact@v4
         with:
           name: hindi-story-video
