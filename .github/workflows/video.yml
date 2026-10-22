@@ -19,15 +19,15 @@ jobs:
           sudo sed -i \'s/rights="none" pattern="@\*"/rights="read|write" pattern="@*"/\' /etc/ImageMagick-6/policy.xml || true
 
       - name: Libraries Install
-        run: pip install --upgrade gTTS moviepy==1.0.3 Pillow requests imageio-ffmpeg
+        run: pip install edge-tts moviepy==1.0.3 Pillow requests
 
       - name: Video Generate
         run: |
           cat > generate.py << \'PYEOF\'
-          from gtts import gTTS
-          from moviepy.editor import *
+          import requests, textwrap, asyncio, os
           from PIL import Image, ImageDraw, ImageFont
-          import requests, textwrap, os
+          from moviepy.editor import *
+          import edge_tts
 
           scenes = [
               {"text": "Savita apne pati ke guzar jaane ke baad bahut gareebi me jee rahi thi. Uske paas itne paise nahi the ki wo dono beto ko padha sake.", "prompt": "poor indian old mother with two young sons in small village hut sad atmosphere"},
@@ -41,18 +41,22 @@ jobs:
               {"text": "Boss ne CCTV me sach dekh liya aur Manav ko bahut daanta. Degree sirf Naukri deti hai, par Hunar Pehchan deta hai.", "prompt": "angry boss scolding manager showing cctv footage"},
               {"text": "Manav ko apni galti ka ehsaas hua. Usne Atul se maafi maangi. Ab dono bhai khushi khushi rehne lage.", "prompt": "two indian brothers hugging and apologizing mother blessing happy ending"}
           ]
+
+          async def make_audio(text, file):
+              await edge_tts.Communicate(text, voice="hi-IN-MadhurNeural").save(file)
+
           clips = []
           for i, scene in enumerate(scenes):
-              print(f"Scene {i+1} bana raha hu...", flush=True)
+              print(f"Scene {i+1} bana raha hu...")
               try:
                   url = f"https://image.pollinations.ai/prompt/{requests.utils.quote(scene[\'prompt\'])}?width=1280&height=720&nologo=true&seed={i+10}"
                   r = requests.get(url, timeout=90)
                   open(f"img{i}.jpg","wb").write(r.content)
                   img = Image.open(f"img{i}.jpg").convert("RGB")
               except Exception as e:
-                  print(f"Image fail {e}, blank bana raha hu")
-                  img = Image.new(\'RGB\', (1280, 720), color=(40,40,40))
-              
+                  print(f"Image fail {e}")
+                  img = Image.new(\'RGB\', (1280, 720), color=(30,30,30))
+
               draw = ImageDraw.Draw(img)
               try:
                   font = ImageFont.truetype("/usr/share/fonts/truetype/dejavu/DejaVuSans-Bold.ttf", 30)
@@ -63,19 +67,15 @@ jobs:
               draw.multiline_text((40, 580), text, font=font, fill=(255,255,255), spacing=4)
               img.save(f"final_img{i}.jpg")
 
-              try:
-                  tts = gTTS(text=scene[\'text\'], lang=\'hi\', slow=False)
-                  tts.save(f"audio{i}.mp3")
-              except Exception as e:
-                  print(f"TTS fail {e}")
-                  raise
+              # Audio banao
+              asyncio.run(make_audio(scene[\'text\'], f"audio{i}.mp3"))
               
               audio = AudioFileClip(f"audio{i}.mp3")
               image = ImageClip(f"final_img{i}.jpg").set_duration(audio.duration)
               image = image.set_audio(audio)
               clips.append(image)
 
-          print("Sab clips bane, ab video jod raha hu...")
+          print("Sab clips bane, video jod raha hu...")
           final = concatenate_videoclips(clips, method="compose")
           final.write_videofile("final_video.mp4", fps=24, codec="libx264", audio_codec="aac")
           print("VIDEO BAN GAYA!")
@@ -83,11 +83,10 @@ jobs:
           python generate.py
 
       - name: Check File
-        run: ls -lh *.mp4 *.jpg *.mp3 || true
+        run: ls -lh
 
       - name: Video Save
         uses: actions/upload-artifact@v4
         with:
           name: hindi-story-video
           path: final_video.mp4
-          if-no-files-found: error
